@@ -156,35 +156,55 @@ class VoiceEngine:
             }}
 
     def build_effects(self, preset_key):
-        """Build the voice effect chain from a preset. Called when you pick a voice."""
+        """Build the voice effect chain from a preset.
+
+        Chain order matters for natural sound:
+        1. Pitch FIRST (cleanest input = cleanest shift)
+        2. EQ to shape the tone
+        3. Light distortion only if preset wants it
+        4. Gentle reverb for space
+        5. Limiter at the end to prevent clipping
+        NO compressor — that's what causes the robotic squash.
+        NO noise gate — it chops the start of words.
+        """
         p = self.presets[preset_key]
         self.preset_name = preset_key
-        self.board = Pedalboard([
-            # Gate: blocks background noise when you're not talking
-            NoiseGate(threshold_db=-50.0, ratio=2.0, release_ms=120.0),
-            # Pitch: shifts your voice up or down
-            PitchShift(semitones=p["pitch_shift_semitones"]),
-            # EQ: boosts bass (low shelf) or treble (high shelf)
-            LowShelfFilter(cutoff_frequency_hz=p["low_shelf_cutoff_hz"],
-                           gain_db=p["low_shelf_gain_db"]),
-            HighShelfFilter(cutoff_frequency_hz=p["high_shelf_cutoff_hz"],
-                            gain_db=p["high_shelf_gain_db"]),
-            # Distortion: adds grit/crunch (0 = clean, higher = dirtier)
-            Distortion(drive_db=p["distortion_drive_db"]),
-            # Compressor: evens out loud/quiet (makes it radio-ready)
-            Compressor(threshold_db=p["compressor_threshold_db"],
-                       ratio=p["compressor_ratio"]),
-            # Gain: overall volume boost
-            Gain(gain_db=p["gain_db"]),
-            # Reverb: echo/room sound (0 = dry, higher = more echo)
-            Reverb(room_size=p["reverb_room_size"],
-                   wet_level=p["reverb_wet_level"],
-                   damping=p["reverb_damping"]),
-            # Mid EQ: cuts robotic mud at 2.5kHz, adds clarity
-            PeakFilter(cutoff_frequency_hz=2500.0, q=1.5, gain_db=3.0),
-            # Limiter: soft ceiling prevents clipping — kills robotic squash
-            Limiter(threshold_db=-6.0, release_ms=80.0),
-        ])
+
+        chain = []
+
+        # 1. Pitch shift — always first, on clean audio
+        if p["pitch_shift_semitones"] != 0.0:
+            chain.append(PitchShift(semitones=p["pitch_shift_semitones"]))
+
+        # 2. EQ shaping — bass and treble
+        if p["low_shelf_gain_db"] != 0.0:
+            chain.append(LowShelfFilter(
+                cutoff_frequency_hz=p["low_shelf_cutoff_hz"],
+                gain_db=p["low_shelf_gain_db"]))
+        if p["high_shelf_gain_db"] != 0.0:
+            chain.append(HighShelfFilter(
+                cutoff_frequency_hz=p["high_shelf_cutoff_hz"],
+                gain_db=p["high_shelf_gain_db"]))
+
+        # 3. Distortion — only if preset actually wants it (skip at 0)
+        if p["distortion_drive_db"] > 0.5:
+            chain.append(Distortion(drive_db=p["distortion_drive_db"]))
+
+        # 4. Volume
+        if p["gain_db"] != 0.0:
+            chain.append(Gain(gain_db=p["gain_db"]))
+
+        # 5. Reverb — only if preset wants echo
+        if p["reverb_wet_level"] > 0.01:
+            chain.append(Reverb(
+                room_size=p["reverb_room_size"],
+                wet_level=p["reverb_wet_level"],
+                damping=p["reverb_damping"]))
+
+        # 6. Safety limiter — prevents clipping, very gentle
+        chain.append(Limiter(threshold_db=-3.0, release_ms=120.0))
+
+        self.board = Pedalboard(chain)
 
     def find_devices(self):
         """Find all microphones and speakers on this computer."""
