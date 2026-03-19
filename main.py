@@ -236,6 +236,12 @@ class VoiceEngine:
             audio = indata[:, 0].copy()
             rms = float(np.sqrt(np.mean(audio ** 2)))
 
+            # Auto-gain: boost quiet input to target level for consistent stream volume
+            if rms > 0.005 and rms < 0.06:
+                boost = min(0.06 / rms, 4.0)  # Max 4x boost (~12dB)
+                audio *= boost
+                np.clip(audio, -1.0, 1.0, out=audio)
+
             # Track if someone is talking
             if rms > 0.008:
                 self._vc += 1; self._sc = 0
@@ -610,7 +616,13 @@ class ThunderVoxApp(ctk.CTk):
         """Select a voice preset."""
         if self.cycling:
             self._stop_cycle()
+        # Stop stream during board swap to prevent race condition
+        was_active = self.engine.is_active
+        if was_active:
+            self.engine.stop()
         self.engine.build_effects(key)
+        if was_active:
+            self.engine.start()
         self.active_key = key
         p = self.engine.presets[key]
         style = VOICE_STYLE.get(key, (C_CARD, C_CARD_HOVER, C_GOLD))
@@ -629,6 +641,9 @@ class ThunderVoxApp(ctk.CTk):
 
     def _test_voice(self):
         """Record 3s, process, play back. The 'wow' moment."""
+        if self.stream_mode:
+            self._set_status("Turn off STREAM MODE first — test plays through your headphones only.")
+            return
         was_active = self.engine.is_active
         if was_active: self.engine.stop()
         self.test_btn.configure(text="SPEAK NOW! Recording for 3 seconds...",

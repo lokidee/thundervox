@@ -29,7 +29,7 @@
     "distortion_drive_db": 8.0,
     "compressor_threshold_db": -10.0,
     "compressor_ratio": 7.0,
-    "gain_db": 4.0
+    "gain_db": 5.0
   },
   "CHAOS_LORD": {
     "display_name": "CHAOS LORD",
@@ -45,7 +45,7 @@
     "distortion_drive_db": 2.0,
     "compressor_threshold_db": -14.0,
     "compressor_ratio": 4.0,
-    "gain_db": 4.0
+    "gain_db": 5.0
   },
   "INQUISITOR": {
     "display_name": "INQUISITOR",
@@ -61,7 +61,7 @@
     "distortion_drive_db": 0.0,
     "compressor_threshold_db": -20.0,
     "compressor_ratio": 2.5,
-    "gain_db": 4.0
+    "gain_db": 5.0
   },
   "ORK_WAAAGH": {
     "display_name": "ORK WAAAGH!!!",
@@ -74,10 +74,10 @@
     "reverb_room_size": 0.15,
     "reverb_wet_level": 0.06,
     "reverb_damping": 0.5,
-    "distortion_drive_db": 18.0,
-    "compressor_threshold_db": -8.0,
-    "compressor_ratio": 8.0,
-    "gain_db": 6.0
+    "distortion_drive_db": 12.0,
+    "compressor_threshold_db": -10.0,
+    "compressor_ratio": 6.0,
+    "gain_db": 5.0
   },
   "PRIMARIS_CAPTAIN": {
     "display_name": "PRIMARIS CAPTAIN",
@@ -109,6 +109,6 @@
     "distortion_drive_db": 10.0,
     "compressor_threshold_db": -16.0,
     "compressor_ratio": 5.0,
-    "gain_db": 3.0
+    "gain_db": 5.0
   }
 }
