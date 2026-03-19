@@ -364,36 +364,88 @@ class VoiceEngine:
 # =====================================================================
 class ThunderVoxApp(ctk.CTk):
 
+    # UI modes
+    MODE_FULL = "full"        # Full window — all controls, sliders, soundboard
+    MODE_COMPACT = "compact"  # Narrow sidebar — just presets + essential controls
+    MODE_MINI = "mini"        # Tiny floating strip — active voice + test button
+
     def __init__(self):
         super().__init__()
 
-        # Window setup
         self.title("THUNDER_VOX")
-        self.geometry("1100x1000")
-        self.minsize(900, 750)
         self.configure(fg_color=C_VOID)
 
-        # Create the voice engine
+        # State
         self.engine = VoiceEngine()
         self.recording = False
         self.active_key = None
         self.cycling = False
         self._cycle_timer = None
+        self._ui_mode = self.MODE_FULL
+        self._dock_side = None  # None=float, "left", "right"
+        self._sliders = {}
+        self._egg_revealed = False
+        self._pulse_state = False
 
-        # Find audio devices and auto-pick the best ones
+        # Devices
         self.inputs, self.outputs = self.engine.find_devices()
         self.engine.auto_pick_devices(self.inputs, self.outputs)
 
-        # Build the interface
-        self._build_ui()
+        # Build initial UI
+        self._apply_mode(self.MODE_FULL)
 
-        # Auto-start if we have devices
         if self.inputs and self.outputs:
             self.after(500, self._start_audio)
 
-        # Health monitor
         self._monitor()
         self.protocol("WM_DELETE_WINDOW", self._quit)
+
+    def _apply_mode(self, mode, dock=None):
+        """Switch UI mode. Rebuilds the entire interface."""
+        self._ui_mode = mode
+        self._dock_side = dock
+
+        # Destroy existing UI
+        for w in self.winfo_children():
+            w.destroy()
+
+        # Get screen dimensions
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+
+        if mode == self.MODE_FULL:
+            self.overrideredirect(False)
+            self.geometry("1100x1000")
+            self.minsize(900, 750)
+            self.attributes("-topmost", False)
+            self._build_ui()
+
+        elif mode == self.MODE_COMPACT:
+            w = 340
+            self.overrideredirect(False)
+            self.minsize(300, 400)
+            self.attributes("-topmost", True)
+            if dock == "left":
+                self.geometry(f"{w}x{screen_h}+0+0")
+            elif dock == "right":
+                self.geometry(f"{w}x{screen_h}+{screen_w - w}+0")
+            else:
+                self.geometry(f"{w}x800")
+            self._build_compact_ui()
+
+        elif mode == self.MODE_MINI:
+            h = 70
+            self.overrideredirect(True)
+            self.attributes("-topmost", True)
+            if dock == "left":
+                self.geometry(f"400x{screen_h}+0+0")
+                self._build_mini_vertical()
+            elif dock == "right":
+                self.geometry(f"400x{screen_h}+{screen_w - 400}+0")
+                self._build_mini_vertical()
+            else:
+                self.geometry(f"800x{h}+{(screen_w-800)//2}+0")
+                self._build_mini_ui()
 
     # =================================================================
     # BUILD THE INTERFACE
@@ -685,6 +737,31 @@ class ThunderVoxApp(ctk.CTk):
         self.bind("<F9>", lambda e: self._heal())
         self.bind("<F12>", lambda e: self._test_voice())
 
+        # ── MODE SWITCHER ──────────────────────────────────
+        ctk.CTkFrame(self.main, fg_color=C_BORDER, height=1, corner_radius=0
+            ).pack(fill="x", padx=24, pady=(10, 0))
+
+        ctk.CTkLabel(self.main, text="WINDOW MODE",
+            font=ctk.CTkFont(family=_BODY_FONT, size=F_SMALL, weight="bold"),
+            text_color=C_GOLD_DIM).pack(anchor="w", padx=28, pady=(8, 4))
+
+        mode_frame = ctk.CTkFrame(self.main, fg_color="transparent")
+        mode_frame.pack(fill="x", padx=24, pady=(0, 4))
+
+        for text, mode, dock in [
+            ("FULL",          self.MODE_FULL,    None),
+            ("COMPACT",       self.MODE_COMPACT, None),
+            ("DOCK LEFT",     self.MODE_COMPACT, "left"),
+            ("DOCK RIGHT",    self.MODE_COMPACT, "right"),
+            ("MINI BAR",      self.MODE_MINI,    None),
+        ]:
+            ctk.CTkButton(mode_frame, text=text,
+                font=ctk.CTkFont(family=_BODY_FONT, size=12, weight="bold"),
+                height=36, fg_color=C_BORDER, hover_color=C_CARD_HOVER,
+                text_color=C_PARCHMENT_DIM, corner_radius=6, width=100,
+                command=lambda m=mode, d=dock: self._apply_mode(m, d),
+            ).pack(side="left", padx=2)
+
         # ── FOOTER — Claude Code easter egg ───────────────
         footer_outer = ctk.CTkFrame(self.main, fg_color="#0a0808", corner_radius=0)
         footer_outer.pack(fill="x", pady=(12, 0))
@@ -712,6 +789,247 @@ class ThunderVoxApp(ctk.CTk):
 
         ctk.CTkFrame(footer_outer, fg_color=C_CRIMSON, height=1, corner_radius=0).pack(fill="x")
         ctk.CTkFrame(footer_outer, fg_color=C_GOLD, height=4, corner_radius=0).pack(fill="x")
+
+    # =================================================================
+    # COMPACT MODE — narrow sidebar with just the essentials
+    # =================================================================
+    def _build_compact_ui(self):
+        self.main = ctk.CTkScrollableFrame(self, fg_color=C_VOID,
+            scrollbar_button_color=C_GOLD_DIM, scrollbar_button_hover_color=C_GOLD)
+        self.main.pack(fill="both", expand=True)
+
+        # Header
+        ctk.CTkFrame(self.main, fg_color=C_GOLD, height=3, corner_radius=0).pack(fill="x")
+        ctk.CTkLabel(self.main, text="THUNDER_VOX",
+            font=ctk.CTkFont(family=_TITLE_FONT, size=28, weight="bold"),
+            text_color=C_GOLD_BRIGHT).pack(pady=(10, 2))
+
+        # Status
+        self.status = ctk.CTkLabel(self.main, text="Ready",
+            font=ctk.CTkFont(family=_BODY_FONT, size=12),
+            text_color=C_PARCHMENT_DIM, wraplength=300)
+        self.status.pack(pady=(0, 6))
+
+        # Active voice indicator
+        self.voice_name = ctk.CTkLabel(self.main, text="—",
+            font=ctk.CTkFont(family=_TITLE_FONT, size=24, weight="bold"),
+            text_color=C_GOLD_DIM)
+        self.voice_name.pack(pady=(4, 2))
+        self.voice_desc = ctk.CTkLabel(self.main, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=11), text_color=C_PARCHMENT_DIM)
+        self.voice_desc.pack()
+        self.ind_bar = ctk.CTkFrame(self.main, fg_color=C_BORDER, height=2, corner_radius=0)
+        self.ind_bar.pack(fill="x", pady=(6, 6))
+
+        # Latency / voice
+        info = ctk.CTkFrame(self.main, fg_color="transparent")
+        info.pack(fill="x", padx=8)
+        self.latency_lbl = ctk.CTkLabel(info, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=11), text_color=C_PARCHMENT_DIM)
+        self.latency_lbl.pack(side="left")
+        self.voice_lbl = ctk.CTkLabel(info, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=11, weight="bold"), text_color=C_PARCHMENT_DIM)
+        self.voice_lbl.pack(side="right")
+
+        # Preset buttons — stacked vertically
+        self.voice_btns = {}
+        self.voice_cards = {}
+        for i, (key, p) in enumerate(self.engine.presets.items()):
+            style = VOICE_STYLE.get(key, (C_CARD, C_CARD_HOVER, C_GOLD))
+            btn = ctk.CTkButton(self.main,
+                text=p["display_name"],
+                font=ctk.CTkFont(family=_TITLE_FONT, size=18, weight="bold"),
+                height=50, fg_color=style[0], hover_color=style[1],
+                text_color=style[2], corner_radius=6,
+                command=lambda k=key: self._pick_voice(k))
+            btn.pack(fill="x", padx=8, pady=2)
+            self.voice_btns[key] = btn
+            self.voice_cards[key] = btn  # In compact mode, btn IS the card
+            if i < 7:
+                self.bind(f"<F{i+1}>", lambda e, k=key: self._pick_voice(k))
+
+        # Essential controls
+        ctk.CTkFrame(self.main, fg_color=C_BORDER, height=1, corner_radius=0
+            ).pack(fill="x", padx=8, pady=(8, 4))
+
+        self.test_btn = ctk.CTkButton(self.main, text="TEST MY VOICE",
+            font=ctk.CTkFont(family=_BODY_FONT, size=14, weight="bold"),
+            height=50, fg_color="#2a1a00", hover_color="#4a3000",
+            text_color=C_GOLD_GLOW, corner_radius=6,
+            command=self._test_voice)
+        self.test_btn.pack(fill="x", padx=8, pady=2)
+
+        self.rec_btn = ctk.CTkButton(self.main, text="RECORD [F8]",
+            font=ctk.CTkFont(family=_BODY_FONT, size=12, weight="bold"),
+            height=40, fg_color=C_CRIMSON, hover_color=C_RED_BRIGHT,
+            text_color=C_WHITE, corner_radius=6,
+            command=self._toggle_rec)
+        self.rec_btn.pack(fill="x", padx=8, pady=2)
+
+        self.stream_mode = getattr(self, 'stream_mode', False)
+        self.stream_btn = ctk.CTkButton(self.main, text="STREAM MODE",
+            font=ctk.CTkFont(family=_BODY_FONT, size=12, weight="bold"),
+            height=40, fg_color="#0a1420", hover_color="#142030",
+            text_color="#6090c0", corner_radius=6,
+            command=self._toggle_stream_mode)
+        self.stream_btn.pack(fill="x", padx=8, pady=2)
+
+        # Mode buttons at bottom
+        ctk.CTkFrame(self.main, fg_color=C_BORDER, height=1, corner_radius=0
+            ).pack(fill="x", padx=8, pady=(8, 4))
+
+        modes = ctk.CTkFrame(self.main, fg_color="transparent")
+        modes.pack(fill="x", padx=8, pady=4)
+        for text, mode, dock in [("FULL", self.MODE_FULL, None),
+                                  ("DOCK L", self.MODE_COMPACT, "left"),
+                                  ("DOCK R", self.MODE_COMPACT, "right"),
+                                  ("MINI", self.MODE_MINI, None)]:
+            ctk.CTkButton(modes, text=text,
+                font=ctk.CTkFont(family=_BODY_FONT, size=10, weight="bold"),
+                height=30, fg_color=C_BORDER, hover_color=C_CARD_HOVER,
+                text_color=C_PARCHMENT_DIM, corner_radius=4, width=70,
+                command=lambda m=mode, d=dock: self._apply_mode(m, d),
+            ).pack(side="left", padx=1, expand=True, fill="x")
+
+        self.bind("<F8>", lambda e: self._toggle_rec())
+        self.bind("<F9>", lambda e: self._heal())
+        self.bind("<F12>", lambda e: self._test_voice())
+        self.bind("<Escape>", lambda e: self._apply_mode(self.MODE_FULL))
+
+    # =================================================================
+    # MINI MODE — tiny floating bar
+    # =================================================================
+    def _build_mini_ui(self):
+        """Horizontal mini bar — sits at top of screen."""
+        bar = ctk.CTkFrame(self, fg_color=C_PANEL, corner_radius=0,
+            border_width=0)
+        bar.pack(fill="both", expand=True)
+
+        # Make it draggable
+        bar.bind("<Button-1>", self._drag_start)
+        bar.bind("<B1-Motion>", self._drag_move)
+
+        ctk.CTkFrame(bar, fg_color=C_GOLD, height=2, corner_radius=0).pack(fill="x")
+
+        row = ctk.CTkFrame(bar, fg_color="transparent")
+        row.pack(fill="x", padx=8, pady=4)
+
+        ctk.CTkLabel(row, text="\u2620 THUNDER_VOX",
+            font=ctk.CTkFont(family=_TITLE_FONT, size=18, weight="bold"),
+            text_color=C_GOLD_BRIGHT).pack(side="left", padx=(4, 12))
+
+        self.voice_name = ctk.CTkLabel(row, text="—",
+            font=ctk.CTkFont(family=_TITLE_FONT, size=18, weight="bold"),
+            text_color=C_GOLD_DIM)
+        self.voice_name.pack(side="left", padx=(0, 12))
+
+        self.voice_desc = ctk.CTkLabel(row, text="", text_color=C_VOID)  # Hidden in mini
+        self.ind_bar = ctk.CTkFrame(row, fg_color=C_BORDER, width=3, height=30, corner_radius=0)
+        self.ind_bar.pack(side="left", padx=4)
+
+        # Status & monitoring labels (hidden but needed by _monitor)
+        self.status = ctk.CTkLabel(row, text="", text_color=C_VOID)
+        self.latency_lbl = ctk.CTkLabel(row, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=11), text_color=C_PARCHMENT_DIM)
+        self.latency_lbl.pack(side="left", padx=4)
+        self.voice_lbl = ctk.CTkLabel(row, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=11, weight="bold"), text_color=C_PARCHMENT_DIM)
+        self.voice_lbl.pack(side="left", padx=4)
+
+        # Preset quick buttons
+        self.voice_btns = {}
+        self.voice_cards = {}
+        for i, (key, p) in enumerate(self.engine.presets.items()):
+            style = VOICE_STYLE.get(key, (C_CARD, C_CARD_HOVER, C_GOLD))
+            btn = ctk.CTkButton(row, text=p["display_name"][:3],
+                font=ctk.CTkFont(family=_BODY_FONT, size=11, weight="bold"),
+                width=40, height=32, fg_color=style[0], hover_color=style[1],
+                text_color=style[2], corner_radius=4,
+                command=lambda k=key: self._pick_voice(k))
+            btn.pack(side="left", padx=1)
+            self.voice_btns[key] = btn
+            self.voice_cards[key] = btn
+
+        # Expand button
+        ctk.CTkButton(row, text="\u2726",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            width=32, height=32, fg_color=C_GOLD_DIM, hover_color=C_GOLD,
+            text_color=C_VOID, corner_radius=4,
+            command=lambda: self._apply_mode(self.MODE_FULL),
+        ).pack(side="right", padx=2)
+
+        ctk.CTkFrame(bar, fg_color=C_CRIMSON, height=1, corner_radius=0).pack(fill="x", side="bottom")
+
+        # Dummy widgets for methods that reference them
+        self.test_btn = ctk.CTkFrame(self)  # Hidden
+        self.rec_btn = ctk.CTkFrame(self)
+        self.stream_btn = ctk.CTkFrame(self)
+        self.stream_mode = getattr(self, 'stream_mode', False)
+
+    def _build_mini_vertical(self):
+        """Vertical mini strip for docked left/right."""
+        bar = ctk.CTkFrame(self, fg_color=C_PANEL, corner_radius=0)
+        bar.pack(fill="both", expand=True)
+
+        ctk.CTkFrame(bar, fg_color=C_GOLD, height=3, corner_radius=0).pack(fill="x")
+
+        ctk.CTkLabel(bar, text="\u2620 TVOX",
+            font=ctk.CTkFont(family=_TITLE_FONT, size=20, weight="bold"),
+            text_color=C_GOLD_BRIGHT).pack(pady=(8, 4))
+
+        self.voice_name = ctk.CTkLabel(bar, text="—",
+            font=ctk.CTkFont(family=_TITLE_FONT, size=16, weight="bold"),
+            text_color=C_GOLD_DIM)
+        self.voice_name.pack(pady=(2, 4))
+
+        self.voice_desc = ctk.CTkLabel(bar, text="", text_color=C_VOID)
+        self.ind_bar = ctk.CTkFrame(bar, fg_color=C_BORDER, height=2, corner_radius=0)
+        self.ind_bar.pack(fill="x", padx=4, pady=2)
+        self.status = ctk.CTkLabel(bar, text="", text_color=C_VOID)
+        self.latency_lbl = ctk.CTkLabel(bar, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=10), text_color=C_PARCHMENT_DIM)
+        self.latency_lbl.pack(pady=2)
+        self.voice_lbl = ctk.CTkLabel(bar, text="",
+            font=ctk.CTkFont(family=_BODY_FONT, size=10, weight="bold"), text_color=C_PARCHMENT_DIM)
+        self.voice_lbl.pack(pady=(0, 4))
+
+        self.voice_btns = {}
+        self.voice_cards = {}
+        for i, (key, p) in enumerate(self.engine.presets.items()):
+            style = VOICE_STYLE.get(key, (C_CARD, C_CARD_HOVER, C_GOLD))
+            btn = ctk.CTkButton(bar, text=p["display_name"],
+                font=ctk.CTkFont(family=_BODY_FONT, size=13, weight="bold"),
+                height=44, fg_color=style[0], hover_color=style[1],
+                text_color=style[2], corner_radius=4,
+                command=lambda k=key: self._pick_voice(k))
+            btn.pack(fill="x", padx=6, pady=2)
+            self.voice_btns[key] = btn
+            self.voice_cards[key] = btn
+
+        ctk.CTkFrame(bar, fg_color=C_BORDER, height=1, corner_radius=0
+            ).pack(fill="x", padx=6, pady=6)
+
+        ctk.CTkButton(bar, text="FULL MODE",
+            font=ctk.CTkFont(family=_BODY_FONT, size=12, weight="bold"),
+            height=36, fg_color=C_GOLD_DIM, hover_color=C_GOLD,
+            text_color=C_VOID, corner_radius=4,
+            command=lambda: self._apply_mode(self.MODE_FULL),
+        ).pack(fill="x", padx=6, pady=2)
+
+        self.test_btn = ctk.CTkFrame(self)
+        self.rec_btn = ctk.CTkFrame(self)
+        self.stream_btn = ctk.CTkFrame(self)
+        self.stream_mode = getattr(self, 'stream_mode', False)
+
+    # Drag support for mini mode
+    def _drag_start(self, event):
+        self._drag_x = event.x
+        self._drag_y = event.y
+
+    def _drag_move(self, event):
+        x = self.winfo_x() + event.x - self._drag_x
+        y = self.winfo_y() + event.y - self._drag_y
+        self.geometry(f"+{x}+{y}")
 
     # =================================================================
     # ACTIONS — what happens when you click things
@@ -745,16 +1063,21 @@ class ThunderVoxApp(ctk.CTk):
         self.ind_bar.configure(fg_color=style[2])
 
         for k, card in self.voice_cards.items():
-            if k == key:
-                card.configure(border_color=style[2], border_width=3)
-            else:
-                card.configure(border_color=C_BORDER, border_width=2)
+            try:
+                if k == key:
+                    card.configure(border_color=style[2], border_width=3)
+                else:
+                    card.configure(border_color=C_BORDER, border_width=2)
+            except Exception:
+                pass  # Mini/compact mode buttons don't have border_color
 
         self._set_status(f"Voice: {p['display_name']} — hit TEST MY VOICE to hear it!")
         self._sync_sliders_to_preset(key)
 
     def _sync_sliders_to_preset(self, key):
         """Update slider positions to match the current preset values."""
+        if not self._sliders:
+            return  # No sliders in compact/mini mode
         p = self.engine.presets[key]
         for param, (slider, val_label) in self._sliders.items():
             val = p.get(param, 0.0)
