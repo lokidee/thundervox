@@ -405,23 +405,44 @@ class ThunderVoxApp(ctk.CTk):
             scrollbar_button_hover_color=C_GOLD)
         self.main.pack(fill="both", expand=True)
 
-        # ── HEADER ──────────────────────────────────────────
-        hdr = ctk.CTkFrame(self.main, fg_color=C_PANEL, corner_radius=0)
+        # ── HEADER — Stream-worthy Imperial banner ──────────
+        hdr_outer = ctk.CTkFrame(self.main, fg_color="#1a1408", corner_radius=0,
+            border_width=0)
+        hdr_outer.pack(fill="x")
+
+        # Top gold accent bar (thick)
+        ctk.CTkFrame(hdr_outer, fg_color=C_GOLD, height=5, corner_radius=0).pack(fill="x")
+
+        # Crimson accent line
+        ctk.CTkFrame(hdr_outer, fg_color=C_CRIMSON, height=2, corner_radius=0).pack(fill="x")
+
+        hdr = ctk.CTkFrame(hdr_outer, fg_color=C_PANEL, corner_radius=0)
         hdr.pack(fill="x")
-        ctk.CTkFrame(hdr, fg_color=C_GOLD, height=4, corner_radius=0).pack(fill="x")
 
         pad = ctk.CTkFrame(hdr, fg_color="transparent")
-        pad.pack(fill="x", padx=28, pady=(20, 6))
+        pad.pack(fill="x", padx=28, pady=(18, 4))
+
+        # Aquila line above title
+        ctk.CTkLabel(pad,
+            text="\u2726 \u2694 \u269C  ===///|\\\\\\===  \u269C \u2694 \u2726",
+            font=ctk.CTkFont(family="Courier New", size=16),
+            text_color=C_GOLD_DIM).pack(anchor="center", pady=(0, 6))
 
         ctk.CTkLabel(pad, text="THUNDER_VOX",
             font=ctk.CTkFont(family=_TITLE_FONT, size=F_HUGE, weight="bold"),
-            text_color=C_GOLD_BRIGHT).pack(anchor="w")
+            text_color=C_GOLD_BRIGHT).pack(anchor="center")
 
-        ctk.CTkLabel(pad, text="VOICE OF THE GOD-EMPEROR",
+        ctk.CTkLabel(pad, text="\u2620  VOICE OF THE GOD-EMPEROR  \u2620",
             font=ctk.CTkFont(family=_BODY_FONT, size=F_MED, weight="bold"),
-            text_color=C_CRIMSON).pack(anchor="w")
+            text_color=C_CRIMSON).pack(anchor="center")
 
-        ctk.CTkFrame(hdr, fg_color=C_GOLD_DIM, height=1, corner_radius=0).pack(fill="x", pady=(10,0))
+        # Divider with skulls
+        ctk.CTkLabel(pad,
+            text="\u2726 \u25C6 \u2726 \u25C6 \u2726",
+            font=ctk.CTkFont(size=14),
+            text_color=C_GOLD_DIM).pack(anchor="center", pady=(6, 0))
+
+        ctk.CTkFrame(hdr, fg_color=C_GOLD_DIM, height=1, corner_radius=0).pack(fill="x", pady=(8, 0))
 
         # Welcome / status
         status_pad = ctk.CTkFrame(hdr, fg_color="transparent")
@@ -432,6 +453,10 @@ class ThunderVoxApp(ctk.CTk):
             font=ctk.CTkFont(family=_BODY_FONT, size=F_NORM),
             text_color=C_PARCHMENT, wraplength=900, justify="left")
         self.status.pack(anchor="w")
+
+        # Bottom border of header
+        ctk.CTkFrame(hdr_outer, fg_color=C_CRIMSON, height=1, corner_radius=0).pack(fill="x")
+        ctk.CTkFrame(hdr_outer, fg_color=C_GOLD_DIM, height=2, corner_radius=0).pack(fill="x")
 
         # ── VOICE INDICATOR ─────────────────────────────────
         self.ind_frame = ctk.CTkFrame(self.main, fg_color=C_CARD, corner_radius=0,
@@ -660,8 +685,33 @@ class ThunderVoxApp(ctk.CTk):
         self.bind("<F9>", lambda e: self._heal())
         self.bind("<F12>", lambda e: self._test_voice())
 
-        # Bottom spacer
-        ctk.CTkFrame(self.main, fg_color=C_VOID, height=20, corner_radius=0).pack(fill="x")
+        # ── FOOTER — Claude Code easter egg ───────────────
+        footer_outer = ctk.CTkFrame(self.main, fg_color="#0a0808", corner_radius=0)
+        footer_outer.pack(fill="x", pady=(12, 0))
+
+        ctk.CTkFrame(footer_outer, fg_color=C_GOLD_DIM, height=1, corner_radius=0).pack(fill="x")
+        ctk.CTkFrame(footer_outer, fg_color=C_CRIMSON, height=1, corner_radius=0).pack(fill="x")
+
+        footer = ctk.CTkFrame(footer_outer, fg_color="transparent")
+        footer.pack(fill="x", padx=28, pady=12)
+
+        # Easter egg — click to reveal
+        self._egg_revealed = False
+        self._egg_label = ctk.CTkLabel(footer,
+            text="\u269C  For the Emperor  \u269C",
+            font=ctk.CTkFont(family=_BODY_FONT, size=13),
+            text_color=C_GOLD_DIM, cursor="hand2")
+        self._egg_label.pack(anchor="center")
+        self._egg_label.bind("<Button-1>", self._easter_egg)
+
+        # Build info line
+        ctk.CTkLabel(footer,
+            text="THUNDER_VOX v1.0  \u2022  Built by Loki  \u2022  Mentored by KHET-1",
+            font=ctk.CTkFont(family=_BODY_FONT, size=11),
+            text_color="#3a3428").pack(anchor="center", pady=(4, 0))
+
+        ctk.CTkFrame(footer_outer, fg_color=C_CRIMSON, height=1, corner_radius=0).pack(fill="x")
+        ctk.CTkFrame(footer_outer, fg_color=C_GOLD, height=4, corner_radius=0).pack(fill="x")
 
     # =================================================================
     # ACTIONS — what happens when you click things
@@ -874,11 +924,34 @@ class ThunderVoxApp(ctk.CTk):
                 "Clip done! How'd that sound?" if ok else "Clip failed — check the file."))
         threading.Thread(target=go, daemon=True).start()
 
+    def _easter_egg(self, event=None):
+        """Claude Code stamp of approval — click 'For the Emperor' to reveal."""
+        if not self._egg_revealed:
+            self._egg_revealed = True
+            self._egg_label.configure(
+                text=(
+                    "\u2620 FORGED BY CLAUDE CODE \u2022 OPUS 4.6 \u2620\n"
+                    "AI + Human in the Loop \u2022 Loki speaks, Claude builds\n"
+                    "ZK Proof Stream Ready \u2022 First of its kind\n"
+                    "KHET-1 \u2022 lokidee \u2022 Anthropic\n"
+                    "\u269C The Emperor Protects \u2022 Meow Meow \u269C"
+                ),
+                text_color=C_GOLD,
+                font=ctk.CTkFont(family=_BODY_FONT, size=13, weight="bold"),
+                justify="center")
+            self._set_status("\u2620 Easter egg found! Claude Code stamp of approval revealed.")
+        else:
+            self._egg_revealed = False
+            self._egg_label.configure(
+                text="\u269C  For the Emperor  \u269C",
+                text_color=C_GOLD_DIM,
+                font=ctk.CTkFont(family=_BODY_FONT, size=13))
+
     def _set_status(self, text):
         self.status.configure(text=text)
 
     # =================================================================
-    # BACKGROUND MONITOR — checks health + updates display
+    # BACKGROUND MONITOR — checks health + updates display + glow
     # =================================================================
     def _monitor(self):
         if self.engine.is_active:
@@ -886,13 +959,28 @@ class ThunderVoxApp(ctk.CTk):
             lc = C_GREEN if lat < 40 else (C_GOLD if lat < 80 else C_RED_BRIGHT)
             self.latency_lbl.configure(text=f"Latency: {lat:.0f}ms", text_color=lc)
             if self.engine.voice_detected:
-                self.voice_lbl.configure(text="VOICE DETECTED", text_color=C_GREEN)
+                self.voice_lbl.configure(text="\u2620 VOICE DETECTED", text_color=C_GREEN)
             else:
                 self.voice_lbl.configure(text="listening...", text_color=C_PARCHMENT_DIM)
         if self.engine.needs_heal:
             self.engine.needs_heal = False
             self._heal()
         self.after(2000, self._monitor)
+        # Subtle indicator pulse for stream visual
+        self._pulse()
+
+    _pulse_state = False
+    def _pulse(self):
+        """Subtle gold/crimson pulse on the voice indicator bar — looks alive on stream."""
+        if not self.engine.is_active:
+            return
+        self._pulse_state = not self._pulse_state
+        if self.active_key:
+            style = VOICE_STYLE.get(self.active_key, (C_CARD, C_CARD_HOVER, C_GOLD))
+            if self._pulse_state:
+                self.ind_bar.configure(fg_color=style[2])
+            else:
+                self.ind_bar.configure(fg_color=C_GOLD_DIM)
 
     def _quit(self):
         self.engine.stop()
