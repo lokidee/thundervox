@@ -17,6 +17,7 @@ import sounddevice as sd
 from pedalboard import (
     Pedalboard, PitchShift, Reverb, LowShelfFilter,
     HighShelfFilter, Distortion, Compressor, Gain, NoiseGate,
+    Limiter, PeakFilter,
 )
 import customtkinter as ctk
 
@@ -179,6 +180,10 @@ class VoiceEngine:
             Reverb(room_size=p["reverb_room_size"],
                    wet_level=p["reverb_wet_level"],
                    damping=p["reverb_damping"]),
+            # Mid EQ: cuts robotic mud at 2.5kHz, adds clarity
+            PeakFilter(cutoff_frequency_hz=2500.0, q=1.5, gain_db=3.0),
+            # Limiter: soft ceiling prevents clipping — kills robotic squash
+            Limiter(threshold_db=-6.0, release_ms=80.0),
         ])
 
     def find_devices(self):
