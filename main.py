@@ -509,9 +509,72 @@ class ThunderVoxApp(ctk.CTk):
         for r in range((len(self.engine.presets) + 1) // 2):
             grid.rowconfigure(r, weight=1)
 
-        # ── MAIN BUTTONS ────────────────────────────────────
+        # ── VOICE TUNING SLIDERS ───────────────────────────
         ctk.CTkFrame(self.main, fg_color=C_BORDER, height=1, corner_radius=0
             ).pack(fill="x", padx=24, pady=(12, 0))
+
+        ctk.CTkLabel(self.main, text="TUNE YOUR VOICE — drag sliders to adjust live",
+            font=ctk.CTkFont(family=_BODY_FONT, size=F_NORM, weight="bold"),
+            text_color=C_GOLD_DIM).pack(anchor="w", padx=28, pady=(10, 4))
+
+        sliders_frame = ctk.CTkFrame(self.main, fg_color=C_CARD, corner_radius=10,
+            border_width=1, border_color=C_BORDER)
+        sliders_frame.pack(fill="x", padx=24, pady=(0, 8))
+
+        # Slider config: (label, param_key, min, max, default)
+        self._slider_defs = [
+            ("PITCH",      "pitch_shift_semitones", -12.0, 8.0),
+            ("BASS BOOST",  "low_shelf_gain_db",    -10.0, 14.0),
+            ("TREBLE",      "high_shelf_gain_db",   -8.0,  8.0),
+            ("DISTORTION",  "distortion_drive_db",   0.0,  18.0),
+            ("REVERB",      "reverb_wet_level",      0.0,  0.5),
+            ("ECHO SIZE",   "reverb_room_size",      0.05, 0.95),
+            ("VOLUME",      "gain_db",               0.0,  10.0),
+        ]
+        self._sliders = {}
+
+        for label, param, lo, hi in self._slider_defs:
+            row = ctk.CTkFrame(sliders_frame, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(6, 2))
+
+            ctk.CTkLabel(row, text=label, width=120,
+                font=ctk.CTkFont(family=_BODY_FONT, size=F_SMALL, weight="bold"),
+                text_color=C_GOLD, anchor="w").pack(side="left")
+
+            val_label = ctk.CTkLabel(row, text="0.0", width=60,
+                font=ctk.CTkFont(family=_BODY_FONT, size=F_SMALL),
+                text_color=C_PARCHMENT_DIM, anchor="e")
+            val_label.pack(side="right", padx=(8, 0))
+
+            slider = ctk.CTkSlider(row,
+                from_=lo, to=hi,
+                height=28, width=400,
+                fg_color=C_BORDER, progress_color=C_GOLD_DIM,
+                button_color=C_GOLD, button_hover_color=C_GOLD_BRIGHT,
+                command=lambda v, p=param, vl=val_label: self._on_slider(p, v, vl))
+            slider.pack(side="left", fill="x", expand=True, padx=(8, 8))
+
+            self._sliders[param] = (slider, val_label)
+
+        # Save button
+        save_row = ctk.CTkFrame(sliders_frame, fg_color="transparent")
+        save_row.pack(fill="x", padx=16, pady=(4, 10))
+
+        ctk.CTkButton(save_row, text="SAVE TO PRESET",
+            font=ctk.CTkFont(family=_BODY_FONT, size=F_SMALL, weight="bold"),
+            height=40, fg_color=C_GOLD_DIM, hover_color=C_GOLD,
+            text_color=C_VOID, corner_radius=6,
+            command=self._save_preset).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(save_row, text="RESET",
+            font=ctk.CTkFont(family=_BODY_FONT, size=F_SMALL, weight="bold"),
+            height=40, fg_color=C_BORDER, hover_color=C_CARD_HOVER,
+            text_color=C_PARCHMENT_DIM, corner_radius=6,
+            command=self._reset_sliders).pack(side="left")
+
+        # ── MAIN BUTTONS ────────────────────────────────────
+        ctk.CTkFrame(self.main, fg_color=C_BORDER, height=1, corner_radius=0
+            ).pack(fill="x", padx=24, pady=(4, 0))
 
         cmds = ctk.CTkFrame(self.main, fg_color="transparent")
         cmds.pack(fill="x", padx=24, pady=(8, 0))
@@ -638,6 +701,50 @@ class ThunderVoxApp(ctk.CTk):
                 card.configure(border_color=C_BORDER, border_width=2)
 
         self._set_status(f"Voice: {p['display_name']} — hit TEST MY VOICE to hear it!")
+        self._sync_sliders_to_preset(key)
+
+    def _sync_sliders_to_preset(self, key):
+        """Update slider positions to match the current preset values."""
+        p = self.engine.presets[key]
+        for param, (slider, val_label) in self._sliders.items():
+            val = p.get(param, 0.0)
+            slider.set(val)
+            val_label.configure(text=f"{val:.1f}")
+
+    def _on_slider(self, param, value, val_label):
+        """Called when any slider moves — rebuild effects chain live."""
+        val_label.configure(text=f"{value:.1f}")
+        if self.active_key is None:
+            return
+        # Update the preset value in memory
+        self.engine.presets[self.active_key][param] = float(value)
+        # Rebuild effects chain with new value (stop/start for safety)
+        was_active = self.engine.is_active
+        if was_active:
+            self.engine.stop()
+        self.engine.build_effects(self.active_key)
+        if was_active:
+            self.engine.start()
+
+    def _save_preset(self):
+        """Save current slider values back to presets.json."""
+        try:
+            with open(PRESETS_FILE, "w") as f:
+                json.dump(self.engine.presets, f, indent=2)
+            self._set_status(f"Saved! {self.engine.presets[self.active_key]['display_name']} updated in presets.json")
+        except Exception as e:
+            self._set_status(f"Save failed: {e}")
+
+    def _reset_sliders(self):
+        """Reload preset from disk, discarding slider changes."""
+        try:
+            with open(PRESETS_FILE) as f:
+                self.engine.presets = json.load(f)
+            if self.active_key:
+                self._pick_voice(self.active_key)
+            self._set_status("Reset to saved preset values.")
+        except Exception as e:
+            self._set_status(f"Reset failed: {e}")
 
     def _test_voice(self):
         """Record 3s, process, play back. The 'wow' moment."""
